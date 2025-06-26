@@ -1,3 +1,4 @@
+// Program.cs
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -5,30 +6,27 @@ using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-var jwtKey = "teste123KJKDGJgdhoIHIUdakdhoY98¨(*&6*&%&¨&(*687TFGUKEHWOUFGIWUEJKHIUG";
-var issuer = "yourApp";
-var audience = "yourAppUsers";
 
+// Configure user token validation
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = issuer,
-
+            ValidIssuer = builder.Configuration["Jwt:UserIssuer"],
             ValidateAudience = true,
-            ValidAudience = audience,
-
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-
-            ValidateLifetime = true
+            ValidAudience = builder.Configuration["Jwt:UserAudience"],
+            ValidateLifetime = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:UserSecret"]))
         };
     });
+
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
@@ -37,59 +35,70 @@ app.UseAuthorization();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-var summaries = new[]
+
+// Example: Get user dashboard data
+// Corrected dashboard endpoint
+app.MapGet("/api/dashboard", async (HttpContext context, IHttpClientFactory clientFactory) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    //var userId = context.User.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
 
-app.MapPost("/login", (UserLogin login) =>
-{
-    if (login.Username == "test" && login.Password == "1234")
-    {
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Name, login.Username),
-            new Claim(ClaimTypes.Role, "User")
-        };
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var token = new JwtSecurityToken(
-            issuer: issuer,
-            audience: audience,
-            claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
-            signingCredentials: creds);
+    //if (string.IsNullOrEmpty(userId))
+    //    return Results.Unauthorized();
 
-        return Results.Ok(new { token = new JwtSecurityTokenHandler().WriteToken(token) });
-    }
+    // Get orders from repository
+    var appToken = GenerateAppToken(builder.Configuration);
+    var client = clientFactory.CreateClient();
+    client.DefaultRequestHeaders.Authorization = new("Bearer", appToken);
 
-    return Results.Unauthorized();
+    var ordersResponse = await client.GetAsync(
+        $"{builder.Configuration["RepositoryApi:BaseUrl"]}/api/internal/orders?userId=2");
+    //$"{builder.Configuration["RepositoryApi:BaseUrl"]}/api/internal/orders?userId={userId}");
+
+    if (!ordersResponse.IsSuccessStatusCode)
+        return Results.Problem("Failed to retrieve data");
+
+    var orders = await ordersResponse.Content.ReadFromJsonAsync<List<Order>>() ?? new List<Order>();
+
+    // Fixed view model creation
+    var dashboardData = new DashboardViewModel(
+        RecentOrders: orders.Take(5).ToList(),
+        OrderCount: orders.Count,
+        StatusSummary: CalculateStatusSummary(orders)
+    );
+
+    return Results.Ok(dashboardData);
 });
+//.RequireAuthorization();
 
-app.MapGet("/secure", (ClaimsPrincipal user) =>
+// Corrected helper method
+Dictionary<string, int> CalculateStatusSummary(List<Order> orders)
 {
-    var name = user.Identity?.Name ?? "unknown";
-    return Results.Ok($"Hello, {name}. You are authorized.");
-}).RequireAuthorization();
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-}).RequireAuthorization();
+    return orders
+        .GroupBy(o => o.Status)
+        .ToDictionary(
+            g => g.Key,
+            g => g.Count());
+}
 
 app.Run();
 
-record UserLogin(string Username, string Password);
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+// Helper methods
+string GenerateAppToken(IConfiguration config)
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:AppSecret"]));
+    var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+    var token = new JwtSecurityToken(
+        issuer: config["Jwt:AppIssuer"],
+        audience: config["Jwt:AppAudience"],
+        expires: DateTime.UtcNow.AddMinutes(5),
+        claims: new[] { new Claim("api", "gateway") },
+        signingCredentials: credentials
+    );
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
 }
+
+// Models
+record Order(string Id, string UserId, decimal Amount, DateTime OrderDate, string Status);
+record DashboardViewModel(List<Order> RecentOrders, int OrderCount, Dictionary<string, int> StatusSummary);

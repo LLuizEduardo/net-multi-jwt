@@ -1,69 +1,60 @@
+// Program.cs
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Configure app token validation (only accepts tokens from Gateway)
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["Jwt:AppIssuer"],
             ValidateAudience = true,
+            ValidAudience = builder.Configuration["Jwt:AppAudience"],
             ValidateLifetime = true,
-            ValidIssuer = "your-app",
-            ValidAudience = "your-mvc-client",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("your-secret-key"))
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:AppSecret"]))
         };
     });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("InternalApi", policy =>
+        policy.RequireClaim("api", "gateway"));
+});
+
+
+builder.Services.AddAuthorization();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// Internal data endpoint
+app.MapGet("/api/internal/orders", async (string userId) =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    // In real implementation, query database
+    var mockOrders = new List<Order>
+    {
+        new("1", userId, 100.50m, DateTime.UtcNow.AddDays(-1), "Shipped"),
+        new("2", userId, 29.99m, DateTime.UtcNow.AddDays(-3), "Processing")
+    };
 
-app.UseHttpsRedirection();
-
-
-app.MapGet("/data", () =>
-{
-    return "Secret service data from ServiceApi";
+    return Results.Ok(mockOrders);
 })
-.WithName("GetData")
-.WithOpenApi()
-.RequireAuthorization();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-var forecast = Enumerable.Range(1, 5).Select(index =>
-    new WeatherForecast
-    (
-        DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-        Random.Shared.Next(-20, 55),
-        summaries[Random.Shared.Next(summaries.Length)]
-    ))
-    .ToArray();
-return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
+.RequireAuthorization("InternalApi"); // Only allows Gateway's app token
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+// Model
+record Order(string Id, string UserId, decimal Amount, DateTime OrderDate, string Status);
