@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dominio", "Dominio\Dominio.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infraestrutura", "Infraestrutura\Infraestrutura.csproj", "{FDBC1F00-876F-4DE9-AC5A-55BE4DD7B187}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApiService", "ApiService\ApiService.csproj", "{8B5F14DB-A00A-4899-B0F0-610092597166}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{FDBC1F00-876F-4DE9-AC5A-55BE4DD7B187}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FDBC1F00-876F-4DE9-AC5A-55BE4DD7B187}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FDBC1F00-876F-4DE9-AC5A-55BE4DD7B187}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B5F14DB-A00A-4899-B0F0-610092597166}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B5F14DB-A00A-4899-B0F0-610092597166}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B5F14DB-A00A-4899-B0F0-610092597166}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B5F14DB-A00A-4899-B0F0-610092597166}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
